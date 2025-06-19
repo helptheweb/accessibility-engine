@@ -1,0 +1,63 @@
+# Test files
+test/
+test.html
+test-cli.sh
+example.js
+*.test.js
+*.spec.js
+
+# Source files (only include dist in package)
+src/
+
+# Development files
+.eslintrc.json
+.prettierrc
+tsconfig.json
+bun.lockb
+
+# Documentation source
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Build artifacts we don't need
+*.tsbuildinfo
+
+# Keep only essentials
+!dist/
+!LICENSE
+!package.json
+!README.md
+
+CHATLOG.md

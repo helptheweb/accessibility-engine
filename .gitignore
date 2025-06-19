@@ -49,3 +49,5 @@ __tests__/coverage/
 tmp/
 temp/
 *.tmp
+
+CHATLOG.md

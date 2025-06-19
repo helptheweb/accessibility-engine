@@ -14,6 +14,19 @@ import fetch from 'node-fetch';
 import createAccessibilityEngine from '../index.js';
 import { formatReport } from './formatters.js';
 
+// Suppress JSDOM CSS parsing errors
+const originalConsoleError = console.error;
+console.error = (...args) => {
+  // Filter out CSS parsing errors and other noisy errors
+  const errorString = args.join(' ');
+  if (errorString.includes('Could not parse CSS stylesheet') ||
+      errorString.includes('Invalid CSS') ||
+      errorString.includes('Expected')) {
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+
 const program = new Command();
 
 program
@@ -32,6 +45,9 @@ program
   .option('-q, --quiet', 'Only show summary')
   .option('-v, --verbose', 'Show detailed information')
   .option('--no-color', 'Disable colored output')
+  .option('--max-elements <number>', 'Maximum elements to check per rule', '1000')
+  .option('--timeout <seconds>', 'Timeout in seconds', '30')
+  .option('-s, --silent', 'Suppress all error messages')
   .action(async (source, options) => {
     const spinner = ora('Loading...').start();
     
@@ -42,7 +58,12 @@ program
       
       if (source.startsWith('http://') || source.startsWith('https://')) {
         spinner.text = 'Fetching URL...';
-        const response = await fetch(source);
+        const response = await fetch(source, {
+          timeout: 30000,
+          headers: {
+            'User-Agent': 'HelpTheWeb Accessibility Engine/1.0'
+          }
+        });
         html = await response.text();
       } else if (existsSync(source)) {
         spinner.text = 'Reading file...';
@@ -54,13 +75,24 @@ program
       
       // Create DOM with proper configuration
       spinner.text = 'Creating DOM...';
+      
+      // Configure JSDOM to suppress CSS errors
+      const virtualConsole = new (await import('jsdom')).VirtualConsole();
+      if (options.silent) {
+        virtualConsole.on('error', () => {});
+        virtualConsole.on('warn', () => {});
+        virtualConsole.on('info', () => {});
+        virtualConsole.on('dir', () => {});
+      }
+      
       const dom = new JSDOM(html, { 
         url: url,
         contentType: 'text/html',
         includeNodeLocations: true,
         storageQuota: 10000000,
         pretendToBeVisual: true,
-        resources: 'usable'
+        resources: 'usable',
+        virtualConsole
       });
       
       // Set up globals for the engine
@@ -78,7 +110,9 @@ program
       // Wait for resources to load
       await new Promise(resolve => {
         if (document.readyState === 'loading') {
-          window.addEventListener('DOMContentLoaded', resolve);
+          window.addEventListener('DOMContentLoaded', resolve, { once: true });
+          // Add timeout to prevent hanging
+          setTimeout(resolve, 5000);
         } else {
           resolve();
         }
@@ -88,7 +122,10 @@ program
       const resultTypes = options.types.split(',').map(t => t.trim());
       const engine = createAccessibilityEngine({
         runOnly: options.ruleset,
-        resultTypes
+        resultTypes,
+        maxElements: parseInt(options.maxElements),
+        timeout: parseInt(options.timeout) * 1000,
+        silent: options.silent
       });
       
       // Run tests - pass the document directly
@@ -131,9 +168,11 @@ program
       
     } catch (error) {
       spinner.fail('Test failed');
-      console.error(chalk.red('Error:'), error.message);
-      if (options.verbose) {
-        console.error(error.stack);
+      if (!options.silent) {
+        console.error(chalk.red('Error:'), error.message);
+        if (options.verbose) {
+          console.error(error.stack);
+        }
       }
       process.exit(1);
     }

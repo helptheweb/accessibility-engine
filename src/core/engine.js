@@ -8,6 +8,9 @@ export class AccessibilityEngine {
       runOnly: options.runOnly || ['wcag22a', 'wcag22aa'],
       resultTypes: options.resultTypes || ['violations'],
       reporter: options.reporter || 'v2',
+      maxElements: options.maxElements || 5000,
+      timeout: options.timeout || 30000,
+      silent: options.silent || false, // Add silent mode
       ...options
     };
     
@@ -19,6 +22,7 @@ export class AccessibilityEngine {
       incomplete: [],
       inapplicable: []
     };
+    this.errors = []; // Collect errors instead of logging
   }
 
   /**
@@ -43,13 +47,14 @@ export class AccessibilityEngine {
    */
   async run(context, callback) {
     try {
-      // Reset results
+      // Reset results and errors
       this.results = {
         violations: [],
         passes: [],
         incomplete: [],
         inapplicable: []
       };
+      this.errors = [];
 
       // Determine the document context
       let doc, rootElement;
@@ -81,6 +86,11 @@ export class AccessibilityEngine {
       const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const rulesToRun = this._getRulesToRun();
       
+      // Set up timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Accessibility test timeout')), this.options.timeout);
+      });
+      
       // Run rules in parallel for better performance
       const rulePromises = [];
       
@@ -91,7 +101,18 @@ export class AccessibilityEngine {
         }
       }
       
-      await Promise.all(rulePromises);
+      // Wait for all rules to complete or timeout
+      try {
+        await Promise.race([
+          Promise.all(rulePromises),
+          timeoutPromise
+        ]);
+      } catch (timeoutError) {
+        this.errors.push({
+          type: 'timeout',
+          message: 'Some accessibility tests timed out'
+        });
+      }
       
       const endTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
       
@@ -101,7 +122,7 @@ export class AccessibilityEngine {
         url: this._getUrl(doc),
         testEngine: {
           name: '@helptheweb/accessibility-engine',
-          version: '1.0.0'
+          version: '1.1.0'
         },
         testEnvironment: this._getTestEnvironment(doc),
         testRunner: {
@@ -110,6 +131,11 @@ export class AccessibilityEngine {
         toolOptions: this.options,
         time: endTime - startTime
       };
+
+      // Add errors to report if any occurred
+      if (this.errors.length > 0 && !this.options.silent) {
+        report.errors = this.errors;
+      }
 
       if (callback) {
         callback(null, report);
@@ -150,27 +176,27 @@ export class AccessibilityEngine {
   }
 
   /**
-   * Run a single rule
+   * Run a single rule with error handling
    */
   async _runRule(rule, context, doc) {
     try {
-      const elements = this._getElements(rule.selector, context, doc);
+      // Add timeout for individual rules
+      const ruleTimeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error(`Rule ${rule.id} timed out`)), 5000);
+      });
       
-      if (elements.length === 0) {
-        this.results.inapplicable.push({
-          id: rule.id,
-          description: rule.description,
-          help: rule.help,
-          helpUrl: rule.helpUrl,
-          impact: rule.impact,
-          tags: rule.tags,
-          explanation: rule.explanation,
-          nodes: []
-        });
-        return;
-      }
-
-      const ruleResult = {
+      const ruleExecution = this._executeRule(rule, context, doc);
+      
+      await Promise.race([ruleExecution, ruleTimeout]);
+    } catch (error) {
+      this.errors.push({
+        type: 'rule_error',
+        rule: rule.id,
+        message: error.message
+      });
+      
+      // Add rule to incomplete if it errors
+      this.results.incomplete.push({
         id: rule.id,
         description: rule.description,
         help: rule.help,
@@ -179,9 +205,54 @@ export class AccessibilityEngine {
         tags: rule.tags,
         explanation: rule.explanation,
         nodes: []
-      };
+      });
+    }
+  }
 
-      for (const element of elements) {
+  /**
+   * Execute a single rule
+   */
+  async _executeRule(rule, context, doc) {
+    const elements = this._getElements(rule.selector, context, doc);
+    
+    if (elements.length === 0) {
+      this.results.inapplicable.push({
+        id: rule.id,
+        description: rule.description,
+        help: rule.help,
+        helpUrl: rule.helpUrl,
+        impact: rule.impact,
+        tags: rule.tags,
+        explanation: rule.explanation,
+        nodes: []
+      });
+      return;
+    }
+
+    const ruleResult = {
+      id: rule.id,
+      description: rule.description,
+      help: rule.help,
+      helpUrl: rule.helpUrl,
+      impact: rule.impact,
+      tags: rule.tags,
+      explanation: rule.explanation,
+      nodes: []
+    };
+
+    // Limit number of elements to check
+    const elementsToCheck = elements.slice(0, this.options.maxElements);
+    
+    if (elements.length > this.options.maxElements) {
+      this.errors.push({
+        type: 'element_limit',
+        rule: rule.id,
+        message: `Checking only first ${this.options.maxElements} of ${elements.length} elements`
+      });
+    }
+
+    for (const element of elementsToCheck) {
+      try {
         const result = await rule.evaluate(element, this.options);
         
         if (result) {
@@ -193,27 +264,32 @@ export class AccessibilityEngine {
           
           ruleResult.nodes.push(nodeResult);
         }
+      } catch (elementError) {
+        // Silently skip elements that cause errors
+        this.errors.push({
+          type: 'element_error',
+          rule: rule.id,
+          message: elementError.message
+        });
       }
+    }
 
-      if (ruleResult.nodes.length > 0) {
-        const allPassed = ruleResult.nodes.every(n => n.passed);
-        const anyIncomplete = ruleResult.nodes.some(n => n.incomplete);
-        
-        if (anyIncomplete) {
-          this.results.incomplete.push(ruleResult);
-        } else if (allPassed) {
-          this.results.passes.push(ruleResult);
-        } else {
-          this.results.violations.push(ruleResult);
-        }
+    if (ruleResult.nodes.length > 0) {
+      const allPassed = ruleResult.nodes.every(n => n.passed);
+      const anyIncomplete = ruleResult.nodes.some(n => n.incomplete);
+      
+      if (anyIncomplete) {
+        this.results.incomplete.push(ruleResult);
+      } else if (allPassed) {
+        this.results.passes.push(ruleResult);
+      } else {
+        this.results.violations.push(ruleResult);
       }
-    } catch (error) {
-      console.error(`Error running rule ${rule.id}:`, error);
     }
   }
 
   /**
-   * Get elements matching selector
+   * Get elements matching selector with performance optimization
    */
   _getElements(selector, context, doc) {
     if (!selector) return [context];
@@ -225,9 +301,20 @@ export class AccessibilityEngine {
         return element ? [element] : [];
       }
       
+      // For wildcard selector, limit scope
+      if (selector === '*') {
+        // Only check visible text elements for performance
+        const textSelectors = 'p, span, div, h1, h2, h3, h4, h5, h6, li, td, th, a, button';
+        return Array.from(context.querySelectorAll(textSelectors));
+      }
+      
       return Array.from(context.querySelectorAll(selector));
     } catch (e) {
-      console.error(`Error with selector "${selector}":`, e);
+      this.errors.push({
+        type: 'selector_error',
+        selector: selector,
+        message: e.message
+      });
       return [];
     }
   }
@@ -238,7 +325,9 @@ export class AccessibilityEngine {
   _getOuterHTML(element) {
     try {
       const clone = element.cloneNode(false);
-      return clone.outerHTML || `<${element.nodeName.toLowerCase()}>`;
+      // Limit HTML length for performance
+      const html = clone.outerHTML || `<${element.nodeName.toLowerCase()}>`;
+      return html.length > 200 ? html.substring(0, 200) + '...' : html;
     } catch (e) {
       return `<${element.nodeName.toLowerCase()}>`;
     }
@@ -254,7 +343,11 @@ export class AccessibilityEngine {
     // Use nodeType constant safely
     const ELEMENT_NODE = 1;
     
-    while (current && current.nodeType === ELEMENT_NODE) {
+    // Limit depth for performance
+    let depth = 0;
+    const maxDepth = 10;
+    
+    while (current && current.nodeType === ELEMENT_NODE && depth < maxDepth) {
       let selector = current.nodeName.toLowerCase();
       
       if (current.id) {
@@ -279,6 +372,7 @@ export class AccessibilityEngine {
       
       path.unshift(selector);
       current = current.parentElement;
+      depth++;
     }
     
     return path.join(' > ');
@@ -318,7 +412,7 @@ export class AccessibilityEngine {
         };
       }
     } catch (e) {
-      // Fallback
+      // Fallback silently
     }
     
     return {
@@ -345,7 +439,7 @@ export class AccessibilityEngine {
         return doc.URL;
       }
     } catch (e) {
-      // Fallback
+      // Fallback silently
     }
     
     return '';

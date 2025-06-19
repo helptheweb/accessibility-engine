@@ -1,59 +1,73 @@
 {
   "name": "@helptheweb/accessibility-engine",
-  "version": "0.0.1",
+  "version": "1.1.0",
   "description": "Custom accessibility testing engine for WCAG compliance",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
-  "types": "src/index.d.ts",
+  "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "helptheweb": "./src/cli/index.js"
+    "helptheweb": "./dist/cli/index.js"
   },
   "scripts": {
-    "build": "bun build src/index.js --outdir=dist --format=esm",
+    "build": "bun run scripts/build-simple.js",
+    "build:full": "bun run scripts/build.js",
     "test": "bun test",
-    "dev": "bun run src/index.js",
+    "dev": "bun run example.js",
     "lint": "eslint src/**/*.js",
     "format": "prettier --write src/**/*.js",
-    "cli": "bun run src/cli/index.js"
+    "cli": "bun run src/cli/index.js",
+    "prepublishOnly": "bun run build",
+    "publish:patch": "bun run scripts/publish.js patch",
+    "publish:minor": "bun run scripts/publish.js minor",
+    "publish:major": "bun run scripts/publish.js major",
+    "size": "npm pack --dry-run"
   },
   "keywords": [
     "accessibility",
     "a11y",
     "wcag",
+    "wcag22",
     "testing",
     "web",
     "aria",
     "screen-reader",
     "disability",
-    "compliance"
+    "compliance",
+    "audit",
+    "checker"
   ],
   "author": "HelpTheWeb",
   "license": "MIT",
   "dependencies": {
     "chalk": "^5.3.0",
     "commander": "^11.1.0",
-    "jsdom": "^23.0.0",
-    "node-fetch": "^3.3.2",
     "ora": "^7.0.1"
+  },
+  "peerDependencies": {
+    "jsdom": ">=22.0.0"
+  },
+  "peerDependenciesMeta": {
+    "jsdom": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/jsdom": "^21.1.6",
     "@types/node": "^20.10.0",
     "eslint": "^8.50.0",
+    "jsdom": "^23.0.0",
+    "node-fetch": "^3.3.2",
     "prettier": "^3.0.3",
     "typescript": "^5.3.0"
   },
   "engines": {
-    "bun": ">=1.0.0",
-    "node": ">=18.0.0"
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
   },
   "files": [
-    "dist",
-    "src",
-    "README.md",
-    "LICENSE"
+    "dist"
   ],
   "repository": {
     "type": "git",
@@ -62,5 +76,9 @@
   "bugs": {
     "url": "https://github.com/helptheweb/engine/issues"
   },
-  "homepage": "https://helptheweb.org"
+  "homepage": "https://helptheweb.org",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
 }

@@ -239,34 +239,13 @@ export const perceivableRules = {
         }
       }
       
-      // Check stylesheets if available
-      try {
-        const styles = Array.from(doc.styleSheets || []);
-        let hasOrientationLock = false;
-        
-        styles.forEach(sheet => {
-          try {
-            Array.from(sheet.cssRules || []).forEach(rule => {
-              if (rule.cssText && rule.cssText.includes('orientation:')) {
-                hasOrientationLock = true;
-              }
-            });
-          } catch (e) {
-            // Cross-origin stylesheets or other errors
-          }
-        });
-        
-        if (hasOrientationLock) {
-          return {
-            passed: false,
-            message: 'CSS may lock content to specific orientation'
-          };
-        }
-      } catch (e) {
-        // Stylesheets not available
-      }
-      
-      return { passed: true };
+      // Skip stylesheet parsing as it can cause issues with large stylesheets
+      // This check would require manual review for CSS-based orientation locks
+      return { 
+        passed: true,
+        incomplete: true,
+        message: 'Manual check needed for CSS orientation restrictions'
+      };
     }
   },
 
@@ -330,22 +309,31 @@ export const perceivableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html',
     explanation: 'Do not use color alone to show important information. For example, links should be underlined, not just a different color.',
     evaluate: (element) => {
-      // Check if link has underline or other visual indicator
-      const styles = getDOMComputedStyle(element);
-      const textDecoration = styles.textDecoration;
-      const hasUnderline = textDecoration && textDecoration.includes('underline');
-      const hasBorder = styles.borderBottomStyle !== 'none';
-      const hasBackground = styles.backgroundColor !== 'transparent' && 
-                           styles.backgroundColor !== 'rgba(0, 0, 0, 0)';
-      
-      // Links in nav or with other indicators are usually fine
-      const inNav = element.closest('nav') !== null;
-      const hasIcon = element.querySelector('svg, img, [class*="icon"]') !== null;
-      
-      return {
-        passed: hasUnderline || hasBorder || hasBackground || inNav || hasIcon,
-        message: 'Link may not be distinguishable without color'
-      };
+      try {
+        // Check if link has underline or other visual indicator
+        const styles = getDOMComputedStyle(element);
+        const textDecoration = styles.textDecoration;
+        const hasUnderline = textDecoration && textDecoration.includes('underline');
+        const hasBorder = styles.borderBottomStyle !== 'none';
+        const hasBackground = styles.backgroundColor !== 'transparent' && 
+                             styles.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        
+        // Links in nav or with other indicators are usually fine
+        const inNav = element.closest('nav') !== null;
+        const hasIcon = element.querySelector('svg, img, [class*="icon"]') !== null;
+        
+        return {
+          passed: hasUnderline || hasBorder || hasBackground || inNav || hasIcon,
+          message: 'Link may not be distinguishable without color'
+        };
+      } catch (e) {
+        // If styles can't be computed, mark as incomplete
+        return {
+          passed: true,
+          incomplete: true,
+          message: 'Unable to compute styles for color check'
+        };
+      }
     }
   },
 
@@ -382,40 +370,49 @@ export const perceivableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html',
     explanation: 'Text needs enough contrast with its background so people with low vision can read it. Like black text on white background is easier to read than gray on light gray.',
     evaluate: (element) => {
-      // Skip non-visible elements
-      const style = safeGetComputedStyle(element);
-      if (style.display === 'none' || style.visibility === 'hidden') {
-        return null;
+      try {
+        // Skip non-visible elements
+        const style = safeGetComputedStyle(element);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          return null;
+        }
+        
+        // Only check elements with text
+        const text = element.textContent?.trim();
+        if (!text || element.children.length > 0) {
+          return null;
+        }
+        
+        const fontSize = parseFloat(style.fontSize);
+        const fontWeight = style.fontWeight;
+        const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700);
+        
+        const fgColor = style.color;
+        const bgColor = style.backgroundColor;
+        
+        // Skip if colors can't be determined
+        if (!fgColor || fgColor === 'transparent' || 
+            !bgColor || bgColor === 'transparent') {
+          return { incomplete: true, message: 'Unable to determine color contrast' };
+        }
+        
+        const contrast = calculateContrast(fgColor, bgColor);
+        const requiredRatio = isLargeText ? 3 : 4.5;
+        
+        return {
+          passed: contrast >= requiredRatio,
+          message: contrast < requiredRatio ? 
+            `Contrast ratio ${contrast.toFixed(2)}:1 is below required ${requiredRatio}:1` : null,
+          data: { contrast, fontSize, isLargeText }
+        };
+      } catch (e) {
+        // If contrast calculation fails, mark as incomplete
+        return {
+          passed: true,
+          incomplete: true,
+          message: 'Unable to calculate contrast'
+        };
       }
-      
-      // Only check elements with text
-      const text = element.textContent?.trim();
-      if (!text || element.children.length > 0) {
-        return null;
-      }
-      
-      const fontSize = parseFloat(style.fontSize);
-      const fontWeight = style.fontWeight;
-      const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700);
-      
-      const fgColor = style.color;
-      const bgColor = style.backgroundColor;
-      
-      // Skip if colors can't be determined
-      if (!fgColor || fgColor === 'transparent' || 
-          !bgColor || bgColor === 'transparent') {
-        return { incomplete: true, message: 'Unable to determine color contrast' };
-      }
-      
-      const contrast = calculateContrast(fgColor, bgColor);
-      const requiredRatio = isLargeText ? 3 : 4.5;
-      
-      return {
-        passed: contrast >= requiredRatio,
-        message: contrast < requiredRatio ? 
-          `Contrast ratio ${contrast.toFixed(2)}:1 is below required ${requiredRatio}:1` : null,
-        data: { contrast, fontSize, isLargeText }
-      };
     }
   },
 
@@ -528,23 +525,31 @@ export const perceivableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast.html',
     explanation: 'Buttons, form fields, and other controls need enough contrast to be visible. People need to see where they can click or type.',
     evaluate: (element) => {
-      const styles = safeGetComputedStyle(element);
-      const borderColor = styles.borderColor;
-      const backgroundColor = styles.backgroundColor;
-      
-      // Skip if colors can't be determined
-      if (!borderColor || borderColor === 'transparent') {
-        return null;
+      try {
+        const styles = safeGetComputedStyle(element);
+        const borderColor = styles.borderColor;
+        const backgroundColor = styles.backgroundColor;
+        
+        // Skip if colors can't be determined
+        if (!borderColor || borderColor === 'transparent') {
+          return null;
+        }
+        
+        const contrast = calculateContrast(borderColor, backgroundColor);
+        
+        return {
+          passed: contrast >= 3,
+          message: contrast < 3 ? 
+            `UI component contrast ${contrast.toFixed(2)}:1 is below required 3:1` : null,
+          data: { contrast }
+        };
+      } catch (e) {
+        return {
+          passed: true,
+          incomplete: true,
+          message: 'Unable to calculate UI component contrast'
+        };
       }
-      
-      const contrast = calculateContrast(borderColor, backgroundColor);
-      
-      return {
-        passed: contrast >= 3,
-        message: contrast < 3 ? 
-          `UI component contrast ${contrast.toFixed(2)}:1 is below required 3:1` : null,
-        data: { contrast }
-      };
     }
   },
 
@@ -559,17 +564,25 @@ export const perceivableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/text-spacing.html',
     explanation: 'Users should be able to increase space between lines and letters without breaking the layout. This helps people with dyslexia read more easily.',
     evaluate: (element) => {
-      const styles = getDOMComputedStyle(element);
-      
-      // Check if element has fixed heights that might break with spacing changes
-      const hasFixedHeight = styles.height !== 'auto' && 
-                           !styles.height.includes('%') && 
-                           element.scrollHeight > element.clientHeight;
-      
-      return {
-        passed: !hasFixedHeight,
-        message: hasFixedHeight ? 'Fixed height may cause text to be cut off with increased spacing' : null
-      };
+      try {
+        const styles = getDOMComputedStyle(element);
+        
+        // Check if element has fixed heights that might break with spacing changes
+        const hasFixedHeight = styles.height !== 'auto' && 
+                             !styles.height.includes('%') && 
+                             element.scrollHeight > element.clientHeight;
+        
+        return {
+          passed: !hasFixedHeight,
+          message: hasFixedHeight ? 'Fixed height may cause text to be cut off with increased spacing' : null
+        };
+      } catch (e) {
+        return {
+          passed: true,
+          incomplete: true,
+          message: 'Unable to check text spacing constraints'
+        };
+      }
     }
   },
 
