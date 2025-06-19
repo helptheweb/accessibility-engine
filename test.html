@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accessibility Engine Test Page</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      line-height: 1.6;
+    }
+    
+    .low-contrast {
+      color: #666;
+      background-color: #999;
+    }
+    
+    .good-contrast {
+      color: #000;
+      background-color: #fff;
+    }
+    
+    .error {
+      color: #d00;
+      font-size: 14px;
+      margin-top: 5px;
+    }
+    
+    nav {
+      background: #f4f4f4;
+      padding: 10px;
+      margin-bottom: 20px;
+    }
+    
+    nav a {
+      margin-right: 15px;
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="#main">Skip to main content</a>
+    <a href="#home">Home</a>
+    <a href="#about">About</a>
+    <a href="#contact">Contact</a>
+  </nav>
+
+  <main id="main">
+    <h1>Test Page for Accessibility Engine</h1>
+    
+    <!-- Image tests -->
+    <section>
+      <h2>Image Tests</h2>
+      <img src="test1.jpg" alt="Test image with alt text">
+      <img src="test2.jpg"> <!-- Missing alt -->
+      <img src="test3.jpg" alt="" role="presentation"> <!-- Decorative -->
+    </section>
+
+    <!-- Form tests -->
+    <section>
+      <h2>Form Tests</h2>
+      <form>
+        <div>
+          <label for="name">Name:</label>
+          <input type="text" id="name" name="name">
+        </div>
+        
+        <div>
+          <!-- Missing label -->
+          <input type="email" name="email" placeholder="Email">
+        </div>
+        
+        <div>
+          <label for="country">Country:</label>
+          <select id="country" name="country">
+            <option value="">Select a country</option>
+            <option value="us">United States</option>
+            <option value="uk">United Kingdom</option>
+          </select>
+        </div>
+        
+        <div>
+          <input type="text" name="phone" aria-label="Phone number">
+        </div>
+        
+        <div>
+          <input type="text" name="invalid" aria-invalid="true" aria-describedby="invalid-error">
+          <span id="invalid-error" class="error">Please enter a valid value</span>
+        </div>
+        
+        <button type="submit">Submit</button>
+      </form>
+    </section>
+
+    <!-- Contrast tests -->
+    <section>
+      <h2>Color Contrast Tests</h2>
+      <p class="good-contrast">This text has good contrast (black on white)</p>
+      <p class="low-contrast">This text has low contrast and may be hard to read</p>
+    </section>
+
+    <!-- Keyboard navigation tests -->
+    <section>
+      <h2>Keyboard Navigation Tests</h2>
+      <button>Normal Button</button>
+      <div onclick="handleClick()" tabindex="0">Clickable div with tabindex</div>
+      <div onclick="handleClick()">Clickable div without tabindex (problem)</div>
+      <a href="#" tabindex="5">Link with positive tabindex (problem)</a>
+    </section>
+
+    <!-- ARIA tests -->
+    <section>
+      <h2>ARIA Tests</h2>
+      <div role="button" tabindex="0" aria-label="Custom button">Custom Button</div>
+      <div role="invalid-role">Invalid role (problem)</div>
+      <div aria-labelledby="non-existent">References non-existent ID (problem)</div>
+      <div role="status" aria-live="polite">Status message area</div>
+      <div role="alert" aria-live="assertive">Alert message area</div>
+    </section>
+
+    <!-- Heading structure -->
+    <section>
+      <h2>Content Section</h2>
+      <h3>Subsection</h3>
+      <p>Content goes here...</p>
+      <h3>Another Subsection</h3>
+      <p>More content...</p>
+    </section>
+  </main>
+
+  <script type="module">
+    import createAccessibilityEngine from './src/index.js';
+    
+    // Run tests when page loads
+    window.addEventListener('DOMContentLoaded', async () => {
+      const engine = createAccessibilityEngine({
+        runOnly: ['wcag22a', 'wcag22aa'],
+        resultTypes: ['violations', 'passes', 'incomplete']
+      });
+      
+      console.log('Running accessibility tests...');
+      
+      const results = await engine.run();
+      
+      console.log('Test Results:', results);
+      console.log(`Found ${results.violations.length} violations`);
+      console.log(`${results.passes.length} rules passed`);
+      console.log(`${results.incomplete.length} incomplete tests`);
+      
+      // Display results on page
+      const resultsDiv = document.createElement('div');
+      resultsDiv.innerHTML = `
+        <h2>Test Results</h2>
+        <p>Violations: ${results.violations.length}</p>
+        <p>Passes: ${results.passes.length}</p>
+        <p>Incomplete: ${results.incomplete.length}</p>
+        <p>Time: ${results.time.toFixed(2)}ms</p>
+      `;
+      document.body.appendChild(resultsDiv);
+    });
+  </script>
+</body>
+</html>
