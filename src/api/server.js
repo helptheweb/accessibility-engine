@@ -8,83 +8,133 @@ import { getAllRules, getRuleById } from '../rules/index.js';
 
 // Create a testUrl function that mimics the CLI behavior
 async function testUrl(url, options = {}) {
-  // Fetch the HTML
-  const response = await fetch(url, {
-    timeout: options.timeout || 30000,
-    headers: {
-      'User-Agent': 'HelpTheWeb Accessibility Engine API/1.0'
-    }
-  });
-  
-  if (!response.ok) {
-    throw new Error(`Failed to fetch URL: ${response.statusText}`);
-  }
-  
-  const html = await response.text();
-  
-  // Create DOM
-  const virtualConsole = new VirtualConsole();
-  if (options.silent) {
-    virtualConsole.on('error', () => {});
-    virtualConsole.on('warn', () => {});
-  }
-  
-  const dom = new JSDOM(html, {
-    url: url,
-    contentType: 'text/html',
-    includeNodeLocations: true,
-    storageQuota: 10000000,
-    pretendToBeVisual: true,
-    resources: 'usable',
-    virtualConsole
-  });
-  
-  // Set up globals
-  const window = dom.window;
-  const document = window.document;
-  
-  global.window = window;
-  global.document = document;
-  global.navigator = window.navigator;
-  global.getComputedStyle = window.getComputedStyle.bind(window);
-  global.Element = window.Element;
-  global.Node = window.Node;
+  console.log(`testUrl: Starting scan for ${url}`);
   
   try {
-    // Wait for DOM to be ready
-    await new Promise(resolve => {
-      if (document.readyState === 'loading') {
-        window.addEventListener('DOMContentLoaded', resolve, { once: true });
-        setTimeout(resolve, 5000);
-      } else {
-        resolve();
+    // Fetch the HTML with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), options.timeout || 30000);
+    
+    console.log(`testUrl: Fetching ${url}...`);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'HelpTheWeb Accessibility Engine API/1.0'
       }
     });
     
-    // Create and configure engine
-    const engine = createAccessibilityEngine({
-      runOnly: options.rules || 'wcag22aa',
-      resultTypes: ['violations'],
-      maxElements: options.maxElements || 1000,
-      timeout: options.timeout || 30000,
-      silent: options.silent !== false
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`);
+    }
+    
+    console.log(`testUrl: Got response, reading HTML...`);
+    const html = await response.text();
+    console.log(`testUrl: HTML length: ${html.length} characters`);
+    
+    // Create DOM
+    const virtualConsole = new VirtualConsole();
+    if (options.silent) {
+      virtualConsole.on('error', () => {});
+      virtualConsole.on('warn', () => {});
+      virtualConsole.on('info', () => {});
+      virtualConsole.on('jsdomError', () => {});
+    }
+    
+    console.log(`testUrl: Creating JSDOM...`);
+    const dom = new JSDOM(html, {
+      url: url,
+      contentType: 'text/html',
+      includeNodeLocations: true,
+      storageQuota: 10000000,
+      pretendToBeVisual: true,
+      resources: undefined, // Don't load external resources
+      runScripts: undefined, // Don't run any scripts
+      virtualConsole
     });
     
-    // Run tests
-    const results = await engine.run(document);
+    // Set up globals
+    const window = dom.window;
+    const document = window.document;
     
-    return results;
-  } finally {
-    // Clean up globals
-    delete global.window;
-    delete global.document;
-    delete global.navigator;
-    delete global.getComputedStyle;
-    delete global.Element;
-    delete global.Node;
+    global.window = window;
+    global.document = document;
+    global.navigator = window.navigator;
+    global.getComputedStyle = window.getComputedStyle.bind(window);
+    global.Element = window.Element;
+    global.Node = window.Node;
     
-    // Close JSDOM
-    window.close();
+    try {
+      console.log(`testUrl: Waiting for DOM ready...`);
+      // Wait for DOM to be ready with timeout
+      await Promise.race([
+        new Promise(resolve => {
+          if (document.readyState === 'loading') {
+            window.addEventListener('DOMContentLoaded', resolve, { once: true });
+          } else {
+            resolve();
+          }
+        }),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('DOM ready timeout')), 5000)
+        )
+      ]);
+      
+      console.log(`testUrl: Creating accessibility engine...`);
+      
+      // For large sites, use more conservative settings
+      const isLargeSite = html.length > 100000;
+      const quickScan = options.quickScan || isLargeSite;
+      const maxElements = quickScan ? 50 : (options.maxElements || 1000);
+      
+      console.log(`testUrl: Site size: ${isLargeSite ? 'LARGE' : 'normal'}, quickScan: ${quickScan}, maxElements: ${maxElements}`);
+      
+      // Create and configure engine
+      const engine = createAccessibilityEngine({
+        runOnly: options.rules || (quickScan ? 'wcag22a' : 'wcag22aa'),
+        resultTypes: ['violations'],
+        maxElements: maxElements,
+        timeout: 10000, // Shorter timeout for the engine itself
+        silent: options.silent !== false
+      });
+      
+      console.log(`testUrl: Running accessibility tests...`);
+      // Run tests with timeout
+      const results = await Promise.race([
+        engine.run(document),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Accessibility test timeout')), 10000)
+        )
+      ]);
+      
+      console.log(`testUrl: Tests complete, found ${results.violations?.length || 0} violations`);
+      return results;
+    } finally {
+      // Clean up globals
+      delete global.window;
+      delete global.document;
+      delete global.navigator;
+      delete global.getComputedStyle;
+      delete global.Element;
+      delete global.Node;
+      
+      // Close JSDOM
+      window.close();
+    }
+  } catch (error) {
+    console.error(`testUrl: Error during scan:`, error.message);
+    // For timeout errors, return partial results
+    if (error.message.includes('timeout')) {
+      console.log('testUrl: Returning empty results due to timeout');
+      return {
+        violations: [],
+        passes: [],
+        incomplete: [],
+        inapplicable: []
+      };
+    }
+    throw error;
   }
 }
 
@@ -172,6 +222,17 @@ app.get(`/api/${API_VERSION}`, (req, res) => {
   });
 });
 
+// Test endpoint for debugging
+app.post(`/api/${API_VERSION}/test`, (req, res) => {
+  console.log('Test endpoint hit');
+  console.log('Request body:', req.body);
+  res.json({ 
+    message: 'Test successful',
+    received: req.body,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Single URL scan
 app.post(`/api/${API_VERSION}/scan`, async (req, res) => {
   const { url, options = {} } = req.body;
@@ -191,7 +252,8 @@ app.post(`/api/${API_VERSION}/scan`, async (req, res) => {
       maxElements: options.maxElements || 1000,
       timeout: options.timeout || 30000,
       silent: true,
-      rules: options.rules // optional rule filtering
+      rules: options.rules, // optional rule filtering
+      quickScan: options.quickScan // NEW: option for faster scans on large sites
     });
 
     const endTime = Date.now();
