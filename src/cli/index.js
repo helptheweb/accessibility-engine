@@ -218,7 +218,7 @@ program
       console.log(chalk.bold('Help:'), rule.help);
       console.log(chalk.bold('Impact:'), chalk.yellow(rule.impact));
       console.log(chalk.bold('Tags:'), rule.tags.join(', '));
-      console.log(chalk.bold('Learn more:'), chalk.blue(rule.helpUrl));
+      console.log(chalk.bold('Learn more:'), chalk.cyan(rule.helpUrl));
       
       if (rule.explanation) {
         console.log(chalk.bold('\nPlain English Explanation:'));

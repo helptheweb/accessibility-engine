@@ -75,7 +75,7 @@ function formatText(results, options) {
     results.violations.forEach((violation, index) => {
       output.push('');
       output.push(useColor ? chalk.bold(`${index + 1}. ${violation.help}`) : `${index + 1}. ${violation.help}`);
-      output.push(`   Rule: ${useColor ? chalk.cyan(violation.id) : violation.id}`);
+      output.push(`   Rule: ${useColor ? chalk.magenta(violation.id) : violation.id}`);
       output.push(`   Impact: ${useColor ? getImpactColor(violation.impact) : violation.impact}`);
       
       if (violation.explanation && options.verbose) {
@@ -106,7 +106,7 @@ function formatText(results, options) {
         }
       }
       
-      output.push(`   Learn more: ${useColor ? chalk.blue(violation.helpUrl) : violation.helpUrl}`);
+      output.push(`   Learn more: ${useColor ? chalk.cyan.underline(violation.helpUrl) : violation.helpUrl}`);
     });
   }
   
