@@ -6,6 +6,7 @@
 export { AccessibilityEngine } from './core/engine.js';
 export { createAccessibilityEngine } from './core/factory.js';
 export { WCAG22 } from './rules/wcag22/index.js';
+export { bestPracticeRules } from './rules/best-practices/index.js';
 export * from './types/index.js';
 
 // Default export for convenience

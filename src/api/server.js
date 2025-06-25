@@ -280,7 +280,8 @@ app.post(`/api/${API_VERSION}/scan`, async (req, res) => {
         explanation: v.description,
         selector: v.nodes?.[0]?.target?.[0] || 'N/A',
         html: v.nodes?.[0]?.html || 'N/A',
-        howToFix: v.nodes?.[0]?.failureSummary || v.help
+        howToFix: v.nodes?.[0]?.failureSummary || v.help,
+        tags: v.tags || []
       }))
     });
   } catch (error) {
@@ -335,7 +336,8 @@ app.post(`/api/${API_VERSION}/scan/batch`, async (req, res) => {
             rule: v.id,
             impact: v.impact,
             message: v.help,
-            selector: v.nodes?.[0]?.target?.[0] || 'N/A'
+            selector: v.nodes?.[0]?.target?.[0] || 'N/A',
+            tags: v.tags || []
           }))
         });
       } catch (error) {

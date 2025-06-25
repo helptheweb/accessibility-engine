@@ -1,5 +1,12 @@
 // Helper functions for rules management
-import { rules } from './wcag22/index.js';
+import { rules as wcagRules } from './wcag22/index.js';
+import { bestPracticeRules } from './best-practices/index.js';
+
+// Combine all rules
+const rules = {
+  ...wcagRules,
+  ...bestPracticeRules
+};
 
 export function getAllRules() {
   // Convert rules object to array format

@@ -7,6 +7,7 @@ A modular, extensible accessibility testing engine for WCAG compliance. Built as
 - 🚀 **Fast Performance** - Optimized for Bun.js with parallel rule execution
 - 📦 **Modular Architecture** - Easy to extend with custom rules and rulesets
 - 🎯 **WCAG 2.2 Complete** - Full coverage of A, AA, and AAA standards (50+ rules)
+- ✨ **Best Practice Rules** - HTML semantic validation beyond WCAG requirements
 - 🔧 **Flexible Configuration** - Run specific rulesets or individual rules
 - 📊 **Detailed Reporting** - Comprehensive results with actionable feedback
 - 💬 **Plain English Explanations** - Every rule includes non-technical explanations
@@ -60,6 +61,15 @@ helptheweb test https://example.com --output report.html --format html
 # Run only Level A tests
 helptheweb test https://example.com --ruleset wcag22a
 
+# Run best practice checks (includes duplicate main detection)
+helptheweb test https://example.com --ruleset best-practice
+
+# Run WCAG AA + best practices
+helptheweb test https://example.com --ruleset wcag22aa-with-best-practices
+
+# Add delay for dynamic content
+helptheweb test https://example.com --delay 3000 --ruleset best-practice
+
 # Show detailed results
 helptheweb test https://example.com --verbose
 
@@ -77,11 +87,20 @@ const engine = createAccessibilityEngine({
   // Run only specific WCAG levels
   runOnly: ['wcag22a', 'wcag22aa'],
   
+  // Or run best practice rules
+  runOnly: ['best-practice'],
+  
+  // Or combine WCAG and best practices
+  runOnly: ['wcag22aa-with-best-practices'],
+  
   // Choose result types to include
   resultTypes: ['violations', 'incomplete'],
   
   // Custom reporter version
-  reporter: 'v2'
+  reporter: 'v2',
+  
+  // Add delay for dynamic content (milliseconds)
+  delay: 3000
 });
 ```
 
@@ -120,6 +139,9 @@ Every rule includes a plain English explanation to help non-technical users unde
 - `wcag22a` - WCAG 2.2 Level A rules (essential accessibility)
 - `wcag22aa` - WCAG 2.2 Level A and AA rules (recommended standard)
 - `wcag22aaa` - All WCAG 2.2 rules (highest standard)
+- `best-practice` - HTML semantic best practices (duplicate landmarks, heading hierarchy, etc.)
+- `wcag22aa-with-best-practices` - WCAG 2.2 AA + best practices (recommended)
+- `all` - All rules including WCAG 2.2 AAA and best practices
 
 ## WCAG 2.2 Rules Coverage
 
@@ -182,6 +204,15 @@ Every rule includes a plain English explanation to help non-technical users unde
 - ✅ Parsing (4.1.1)
 - ✅ Name, Role, Value (4.1.2)
 - ✅ Status Messages (4.1.3)
+
+### Best Practices (Beyond WCAG)
+- ✅ Landmark Uniqueness - Only one `<main>`, `<header>`, `<footer>` at top level
+- ✅ Heading Hierarchy - No skipped heading levels, single h1
+- ✅ Empty Headings - Headings must contain text
+- ✅ List Structure - Proper ul/ol/dl element nesting
+- ✅ Table Headers - Data tables must have th elements
+- ✅ Form Labels - One label per form field
+- ✅ Deprecated Elements - No `<marquee>`, `<blink>`, etc.
 
 ## TypeScript Support
 

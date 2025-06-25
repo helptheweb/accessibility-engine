@@ -38,7 +38,7 @@ program
 program
   .command('test <source>')
   .description('Test a URL or HTML file for accessibility issues')
-  .option('-r, --ruleset <ruleset>', 'Ruleset to use (wcag22a, wcag22aa, wcag22aaa)', 'wcag22aa')
+  .option('-r, --ruleset <ruleset>', 'Ruleset to use (wcag22a, wcag22aa, wcag22aaa, best-practice, wcag22aa-with-best-practices, all)', 'wcag22aa')
   .option('-o, --output <file>', 'Save results to file')
   .option('-f, --format <format>', 'Output format (text, json, html, csv)', 'text')
   .option('-t, --types <types>', 'Result types to include (violations,passes,incomplete)', 'violations')
@@ -122,7 +122,7 @@ program
       // Configure engine
       const resultTypes = options.types.split(',').map(t => t.trim());
       const engine = createAccessibilityEngine({
-        runOnly: options.ruleset,
+        runOnly: [options.ruleset],
         resultTypes,
         maxElements: parseInt(options.maxElements),
         timeout: parseInt(options.timeout) * 1000,
