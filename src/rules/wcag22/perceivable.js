@@ -3,7 +3,7 @@
  * Information and user interface components must be presentable to users in ways they can perceive.
  */
 
-import { calculateContrast, safeGetComputedStyle } from '../../utils/color.js';
+import { calculateContrast, safeGetComputedStyle, getBackgroundColor } from '../../utils/color.js';
 import { getDocument, querySelector, getComputedStyle as getDOMComputedStyle } from '../../utils/dom.js';
 
 export const perceivableRules = {
@@ -377,10 +377,29 @@ export const perceivableRules = {
           return null;
         }
         
-        // Only check elements with text
-        const text = element.textContent?.trim();
-        if (!text || element.children.length > 0) {
+        // Skip elements without direct text content
+        const hasDirectText = Array.from(element.childNodes).some(node => {
+          return node.nodeType === 3 && node.textContent.trim().length > 0;
+        });
+        
+        if (!hasDirectText) {
           return null;
+        }
+        
+        // Skip certain elements that shouldn't be checked
+        const skipTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'BR', 'HR', 'IMG', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA'];
+        if (skipTags.includes(element.tagName)) {
+          return null;
+        }
+        
+        // Skip if element has background image (needs manual review)
+        const bgImage = style.backgroundImage;
+        if (bgImage && bgImage !== 'none') {
+          return {
+            passed: true,
+            incomplete: true,
+            message: 'Element has background image - manual contrast check needed'
+          };
         }
         
         const fontSize = parseFloat(style.fontSize);
@@ -388,15 +407,30 @@ export const perceivableRules = {
         const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700);
         
         const fgColor = style.color;
-        const bgColor = style.backgroundColor;
+        const bgColor = getBackgroundColor(element);
         
-        // Skip if colors can't be determined
+        // Skip if colors can't be determined or are identical (likely error)
         if (!fgColor || fgColor === 'transparent' || 
-            !bgColor || bgColor === 'transparent') {
-          return { incomplete: true, message: 'Unable to determine color contrast' };
+            !bgColor || bgColor === 'transparent' ||
+            fgColor === bgColor) {
+          return { 
+            passed: true,
+            incomplete: true, 
+            message: 'Unable to reliably determine color contrast' 
+          };
         }
         
         const contrast = calculateContrast(fgColor, bgColor);
+        
+        // If contrast is exactly 1, there's likely an error in calculation
+        if (contrast === 1) {
+          return {
+            passed: true,
+            incomplete: true,
+            message: 'Contrast calculation error - manual check needed'
+          };
+        }
+        
         const requiredRatio = isLargeText ? 3 : 4.5;
         
         return {
@@ -457,29 +491,70 @@ export const perceivableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/images-of-text.html',
     explanation: 'Use real text instead of pictures of text. Real text can be resized, recolored, and read by screen readers. Images of text cannot.',
     evaluate: (element) => {
-      // This is a heuristic - actual implementation might use OCR
       const alt = element.getAttribute('alt') || '';
       const src = element.getAttribute('src') || '';
       
-      // Check for common patterns indicating text images
-      const textImagePatterns = [
+      // Skip images that are likely logos or icons (exceptions in WCAG)
+      const logoPatterns = [
         /logo/i,
-        /header/i,
-        /banner/i,
-        /button/i,
-        /text/i,
-        /title/i,
-        /heading/i
+        /brand/i,
+        /icon/i,
+        /avatar/i,
+        /profile/i
       ];
       
-      const mightBeTextImage = textImagePatterns.some(pattern => 
+      if (logoPatterns.some(pattern => pattern.test(src) || pattern.test(alt))) {
+        return { passed: true }; // Logos are exceptions
+      }
+      
+      // Skip decorative images
+      if (alt === '' && element.getAttribute('role') === 'presentation') {
+        return { passed: true };
+      }
+      
+      // Look for actual text image indicators
+      const textImageIndicators = [
+        /infographic/i,
+        /diagram/i,
+        /chart_text/i,
+        /screenshot.*text/i,
+        /text_image/i,
+        /quote_image/i
+      ];
+      
+      const definitelyTextImage = textImageIndicators.some(pattern => 
         pattern.test(src) || pattern.test(alt)
       );
       
-      if (mightBeTextImage && alt.split(' ').length > 3) {
+      // Check if alt text suggests it's rendering substantial text
+      // (not just a label or title)
+      const altWordCount = alt.split(/\s+/).filter(word => word.length > 0).length;
+      const hasLongAlt = altWordCount > 10; // More than 10 words suggests text image
+      
+      // Check for file names that suggest text images
+      const suspiciousFilePatterns = [
+        /slide\d+/i,
+        /page\d+/i,
+        /text\d+/i,
+        /paragraph/i,
+        /content_block/i
+      ];
+      
+      const suspiciousFileName = suspiciousFilePatterns.some(pattern => pattern.test(src));
+      
+      if (definitelyTextImage || (hasLongAlt && suspiciousFileName)) {
         return {
           passed: false,
-          message: 'Image may contain text that should be actual text'
+          message: 'Image appears to contain text that should be actual HTML text'
+        };
+      }
+      
+      // For borderline cases, mark as needing manual review
+      if (hasLongAlt || suspiciousFileName) {
+        return {
+          passed: true,
+          incomplete: true,
+          message: 'Image may contain text - manual review recommended'
         };
       }
       

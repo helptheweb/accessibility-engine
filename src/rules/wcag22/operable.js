@@ -333,18 +333,46 @@ export const operableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/headings-and-labels.html',
     explanation: 'Headings and form labels should clearly describe what follows. Avoid generic text like "Section 1" - use descriptive text like "Contact Information".',
     evaluate: (element) => {
+      // Check visible text first
       const text = element.textContent.trim();
       
-      if (!text) {
+      // Also check for aria-label as alternative
+      const ariaLabel = element.getAttribute('aria-label');
+      const ariaLabelledBy = element.getAttribute('aria-labelledby');
+      
+      // For headings with images (like logos), check if image has alt text
+      const img = element.querySelector('img');
+      const imgAlt = img ? img.getAttribute('alt') : null;
+      
+      // Determine the effective label
+      let effectiveLabel = text;
+      
+      if (!text && ariaLabel) {
+        effectiveLabel = ariaLabel;
+      } else if (!text && ariaLabelledBy) {
+        const labelElement = document.getElementById(ariaLabelledBy);
+        if (labelElement) {
+          effectiveLabel = labelElement.textContent.trim();
+        }
+      } else if (!text && imgAlt) {
+        effectiveLabel = imgAlt;
+      }
+      
+      if (!effectiveLabel) {
+        // Special case: heading might contain only decorative image
+        if (img && img.getAttribute('alt') === '') {
+          return { passed: true }; // Decorative image is OK
+        }
+        
         return {
           passed: false,
-          message: `${element.tagName} is empty`
+          message: `${element.tagName} is empty and has no accessible label`
         };
       }
       
       // Check for generic text
       const genericText = ['heading', 'label', 'title', 'untitled', 'section'];
-      if (genericText.includes(text.toLowerCase())) {
+      if (genericText.includes(effectiveLabel.toLowerCase())) {
         return {
           passed: false,
           message: `${element.tagName} text is not descriptive`
@@ -574,13 +602,60 @@ export const operableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html',
     explanation: 'Buttons and links need to be at least 24x24 pixels so people with motor difficulties can click them easily. Think of it like making buttons finger-friendly.',
     evaluate: (element) => {
+      // Skip hidden elements
+      const style = window.getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return null;
+      }
+      
+      // Skip elements that are likely not visible or not rendered
       const rect = element.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height;
       
+      // If element has no dimensions, it's likely not visible or not yet rendered
+      if (width === 0 && height === 0) {
+        // Check if it's actually meant to be invisible
+        const opacity = parseFloat(style.opacity);
+        if (opacity === 0) {
+          return null;
+        }
+        
+        // Check if parent is hidden
+        let parent = element.parentElement;
+        while (parent) {
+          const parentStyle = window.getComputedStyle(parent);
+          if (parentStyle.display === 'none' || parentStyle.visibility === 'hidden') {
+            return null;
+          }
+          parent = parent.parentElement;
+        }
+        
+        // Element might not be rendered yet, mark as incomplete
+        return {
+          passed: true,
+          incomplete: true,
+          message: 'Element dimensions could not be determined'
+        };
+      }
+      
       // Check if element is inline (exception)
-      const display = window.getComputedStyle(element).display;
-      if (display === 'inline') {
+      if (style.display === 'inline') {
+        return { passed: true };
+      }
+      
+      // Check for exceptions in WCAG 2.2
+      // Exception 1: Inline targets in text
+      if (element.parentElement && window.getComputedStyle(element.parentElement).display === 'inline') {
+        const siblingText = element.previousSibling?.nodeType === 3 || element.nextSibling?.nodeType === 3;
+        if (siblingText) {
+          return { passed: true };
+        }
+      }
+      
+      // Exception 2: User agent default styling (unstyled controls)
+      const hasCustomStyling = element.className || element.getAttribute('style');
+      if (!hasCustomStyling && ['INPUT', 'SELECT'].includes(element.tagName)) {
         return { passed: true };
       }
       

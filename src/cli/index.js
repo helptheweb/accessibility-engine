@@ -48,6 +48,7 @@ program
   .option('--max-elements <number>', 'Maximum elements to check per rule', '1000')
   .option('--timeout <seconds>', 'Timeout in seconds', '30')
   .option('-s, --silent', 'Suppress all error messages')
+  .option('-d, --delay <milliseconds>', 'Delay before running tests (for animations)', '0')
   .action(async (source, options) => {
     const spinner = ora('Loading...').start();
     
@@ -125,7 +126,8 @@ program
         resultTypes,
         maxElements: parseInt(options.maxElements),
         timeout: parseInt(options.timeout) * 1000,
-        silent: options.silent
+        silent: options.silent,
+        delay: parseInt(options.delay)
       });
       
       // Run tests - pass the document directly

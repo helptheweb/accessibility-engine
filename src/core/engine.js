@@ -11,6 +11,7 @@ export class AccessibilityEngine {
       maxElements: options.maxElements || 5000,
       timeout: options.timeout || 30000,
       silent: options.silent || false, // Add silent mode
+      delay: options.delay || 0, // Add delay before running tests
       ...options
     };
     
@@ -83,6 +84,11 @@ export class AccessibilityEngine {
         throw new Error('Invalid context provided');
       }
 
+      // Add delay if specified (useful for pages with animations/lazy loading)
+      if (this.options.delay > 0) {
+        await new Promise(resolve => setTimeout(resolve, this.options.delay));
+      }
+      
       const startTime = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const rulesToRun = this._getRulesToRun();
       
