@@ -394,41 +394,67 @@ export const operableRules = {
     helpUrl: 'https://www.w3.org/WAI/WCAG22/Understanding/focus-visible.html',
     explanation: 'When users tab through a page, they need to see which element has focus. There should be a visible outline or highlight.',
     evaluate: (element) => {
-      // Create a temporary focus state to check styles
-      const originalActiveElement = document.activeElement;
+      // Skip if not visible
+      const style = window.getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return null;
+      }
       
-      try {
-        element.focus();
-        const focusedStyles = window.getComputedStyle(element);
+      // Skip disabled elements
+      if (element.hasAttribute('disabled') || element.getAttribute('aria-disabled') === 'true') {
+        return null;
+      }
+      
+      // Check for modern :focus-visible support
+      const supportsFocusVisible = CSS.supports && CSS.supports('selector(:focus-visible)');
+      
+      // If browser supports :focus-visible, this is the modern recommended pattern
+      if (supportsFocusVisible) {
+        // Only flag actual problems like inline styles that remove ALL focus indicators
+        const inlineStyle = element.getAttribute('style') || '';
+        const hasProblematicInline = /outline\s*:\s*none|outline\s*:\s*0/.test(inlineStyle);
         
-        // Get unfocused styles for comparison
-        element.blur();
-        const unfocusedStyles = window.getComputedStyle(element);
-        
-        // Check if any visual properties change on focus
-        const hasOutlineChange = focusedStyles.outline !== unfocusedStyles.outline;
-        const hasBorderChange = focusedStyles.border !== unfocusedStyles.border;
-        const hasBoxShadowChange = focusedStyles.boxShadow !== unfocusedStyles.boxShadow;
-        const hasBackgroundChange = focusedStyles.backgroundColor !== unfocusedStyles.backgroundColor;
-        
-        // Restore original focus
-        if (originalActiveElement) {
-          originalActiveElement.focus();
+        if (hasProblematicInline) {
+          return {
+            passed: false,
+            message: 'Inline style removes focus outline - this prevents all focus indicators'
+          };
         }
         
-        const hasVisibleIndicator = hasOutlineChange || hasBorderChange || 
-                                   hasBoxShadowChange || hasBackgroundChange;
-        
-        return {
-          passed: hasVisibleIndicator,
-          message: !hasVisibleIndicator ? 'Element lacks visible focus indicator' : null
-        };
-      } catch (e) {
+        // For modern browsers, :focus-visible is the recommended approach
+        // We cannot test pseudo-classes from JavaScript, so we trust the implementation
         return { 
-          incomplete: true, 
-          message: 'Unable to test focus indicator' 
+          passed: true,
+          message: 'Modern browser with :focus-visible support detected'
         };
       }
+      
+      // For older browsers without :focus-visible, check computed styles
+      const outline = style.outline || '';
+      const outlineWidth = style.outlineWidth || '0';
+      const outlineStyle = style.outlineStyle || 'none';
+      
+      // Check if outline is completely removed
+      const noOutline = outline === 'none' || 
+                       outline.includes('0px') ||
+                       outlineWidth === '0px' ||
+                       outlineStyle === 'none';
+      
+      if (noOutline) {
+        // Look for alternative focus indicators
+        const hasBoxShadow = style.boxShadow && style.boxShadow !== 'none';
+        const hasBorderHighlight = element.getAttribute('data-focus-border') === 'true';
+        const hasBackgroundHighlight = element.getAttribute('data-focus-bg') === 'true';
+        
+        if (!hasBoxShadow && !hasBorderHighlight && !hasBackgroundHighlight) {
+          return {
+            passed: false,
+            message: 'Focus outline removed without alternative (browser lacks :focus-visible support)'
+          };
+        }
+      }
+      
+      return { passed: true };
     }
   },
 

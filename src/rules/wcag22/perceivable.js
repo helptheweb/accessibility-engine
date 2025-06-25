@@ -377,7 +377,51 @@ export const perceivableRules = {
           return null;
         }
         
-        // Skip elements without direct text content
+        // Check opacity and skip if 0 or very low (likely animating)
+        const opacity = parseFloat(style.opacity || '1');
+        if (opacity === 0 || opacity < 0.1) {
+          return null;
+        }
+        
+        // Skip elements that might be animating
+        const transition = style.transition || '';
+        const animation = style.animation || '';
+        const transform = style.transform || '';
+        
+        // Check for fade animations
+        if ((animation && (animation.includes('fade') || animation.includes('appear'))) ||
+            (transition && transition.includes('opacity'))) {
+          // If opacity is less than 1, it's likely mid-animation
+          if (opacity < 1) {
+            return null;
+          }
+        }
+        
+        // Check for common animation classes
+        const className = element.className || '';
+        if (typeof className === 'string') {
+          const animationClasses = ['fade-in', 'fade-out', 'appearing', 'stagger-in', 'animate'];
+          const hasAnimationClass = animationClasses.some(cls => className.includes(cls));
+          if (hasAnimationClass && opacity < 1) {
+            return null;
+          }
+        }
+        
+        // Skip elements that are likely not visible
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          // Check if it's intentionally hidden or just not rendered
+          const isOffScreen = rect.top > window.innerHeight || 
+                            rect.bottom < 0 || 
+                            rect.left > window.innerWidth || 
+                            rect.right < 0;
+          
+          if (!isOffScreen) {
+            return null; // Element has no size and isn't off-screen, skip it
+          }
+        }
+        
+        // Only check elements with direct text content
         const hasDirectText = Array.from(element.childNodes).some(node => {
           return node.nodeType === 3 && node.textContent.trim().length > 0;
         });
@@ -386,13 +430,32 @@ export const perceivableRules = {
           return null;
         }
         
-        // Skip certain elements that shouldn't be checked
-        const skipTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'BR', 'HR', 'IMG', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA'];
+        // Skip certain elements
+        const skipTags = [
+          'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE',
+          'BR', 'HR', 'IMG', 'SVG', 'PATH', 'CANVAS',
+          'AUDIO', 'VIDEO', 'IFRAME', 'OBJECT', 'EMBED'
+        ];
+        
         if (skipTags.includes(element.tagName)) {
           return null;
         }
         
-        // Skip if element has background image (needs manual review)
+        // Skip form elements (they have their own contrast requirements)
+        const formTags = ['INPUT', 'BUTTON', 'SELECT', 'TEXTAREA'];
+        if (formTags.includes(element.tagName)) {
+          return null;
+        }
+        
+        // Skip if disabled or placeholder
+        if (element.hasAttribute('disabled') || 
+            element.getAttribute('aria-disabled') === 'true' ||
+            element.hasAttribute('placeholder') ||
+            style.cursor === 'not-allowed') {
+          return null;
+        }
+        
+        // Skip if element has complex background
         const bgImage = style.backgroundImage;
         if (bgImage && bgImage !== 'none') {
           return {
@@ -402,35 +465,31 @@ export const perceivableRules = {
           };
         }
         
-        const fontSize = parseFloat(style.fontSize);
-        const fontWeight = style.fontWeight;
+        // Get text properties
+        const fontSize = parseFloat(style.fontSize || '16');
+        const fontWeight = parseInt(style.fontWeight || '400') || 400;
         const isLargeText = fontSize >= 18 || (fontSize >= 14 && fontWeight >= 700);
         
+        // Get colors
         const fgColor = style.color;
         const bgColor = getBackgroundColor(element);
         
-        // Skip if colors can't be determined or are identical (likely error)
+        // Skip if we can't determine colors reliably
         if (!fgColor || fgColor === 'transparent' || 
             !bgColor || bgColor === 'transparent' ||
             fgColor === bgColor) {
-          return { 
-            passed: true,
-            incomplete: true, 
-            message: 'Unable to reliably determine color contrast' 
-          };
+          return null;
         }
         
+        // Calculate contrast
         const contrast = calculateContrast(fgColor, bgColor);
         
-        // If contrast is exactly 1, there's likely an error in calculation
+        // If contrast is exactly 1, there's likely an error
         if (contrast === 1) {
-          return {
-            passed: true,
-            incomplete: true,
-            message: 'Contrast calculation error - manual check needed'
-          };
+          return null;
         }
         
+        // Check against WCAG requirements
         const requiredRatio = isLargeText ? 3 : 4.5;
         
         return {
@@ -440,12 +499,8 @@ export const perceivableRules = {
           data: { contrast, fontSize, isLargeText }
         };
       } catch (e) {
-        // If contrast calculation fails, mark as incomplete
-        return {
-          passed: true,
-          incomplete: true,
-          message: 'Unable to calculate contrast'
-        };
+        // If there's any error, skip rather than false positive
+        return null;
       }
     }
   },

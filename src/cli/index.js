@@ -166,6 +166,9 @@ program
       // Exit with error code if violations found
       if (results.violations && results.violations.length > 0) {
         process.exit(1);
+      } else {
+        // Success! Exit cleanly
+        process.exit(0);
       }
       
     } catch (error) {

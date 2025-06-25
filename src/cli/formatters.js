@@ -56,6 +56,12 @@ function formatText(results, options) {
     
     output.push(useColor ? chalk[statusColor](status) : status);
     output.push(`Violations: ${summary.violations}`);
+    
+    // Add a brief celebration for perfect score in quiet mode
+    if (summary.violations === 0) {
+      output.push(useColor ? chalk.green('🎉 Perfect accessibility score!') : '🎉 Perfect accessibility score!');
+    }
+    
     return output.join('\n');
   }
   
@@ -66,6 +72,56 @@ function formatText(results, options) {
   output.push(`  ${useColor ? chalk.yellow(`Incomplete: ${summary.incomplete}`) : `Incomplete: ${summary.incomplete}`}`);
   output.push(`  ${useColor ? chalk.gray(`Inapplicable: ${summary.inapplicable}`) : `Inapplicable: ${summary.inapplicable}`}`);
   output.push('');
+  
+  // Celebration for perfect score!
+  if (summary.violations === 0) {
+    output.push('');
+    if (useColor) {
+      output.push(chalk.bold.green('🎉 Congratulations! Your site is accessibility superstar! 🌟'));
+      output.push(chalk.green('✨ No violations found - you\'re making the web better for everyone!'));
+      
+      // Add some fun ASCII art
+      output.push('');
+      output.push(chalk.yellow('      ⭐️ ⭐️ ⭐️'));
+      output.push(chalk.yellow('     ⭐️  ') + chalk.green('A+') + chalk.yellow('  ⭐️'));
+      output.push(chalk.yellow('      ⭐️ ⭐️ ⭐️'));
+      output.push('');
+      
+      if (summary.incomplete > 0) {
+        output.push(chalk.yellow(`⚠️  Just ${summary.incomplete} things to double-check manually.`));
+      } else if (summary.passes > 0) {
+        output.push(chalk.green(`💪 Passed all ${summary.passes} accessibility checks!`));
+      }
+    } else {
+      output.push('🎉 Congratulations! Your site is accessibility superstar! 🌟');
+      output.push('✨ No violations found - you\'re making the web better for everyone!');
+      output.push('');
+      output.push('      ⭐️ ⭐️ ⭐️');
+      output.push('     ⭐️  A+  ⭐️');
+      output.push('      ⭐️ ⭐️ ⭐️');
+      output.push('');
+      
+      if (summary.incomplete > 0) {
+        output.push(`⚠️  Just ${summary.incomplete} things to double-check manually.`);
+      } else if (summary.passes > 0) {
+        output.push(`💪 Passed all ${summary.passes} accessibility checks!`);
+      }
+    }
+    
+    // Add a motivational quote
+    const quotes = [
+      '"The power of the Web is in its universality." - Tim Berners-Lee',
+      '"Accessibility is not a feature, it\'s a social trend." - Antonio Santos',
+      '"When we prioritize accessibility, we make the web better for everyone."',
+      '"Good design is inclusive design."',
+      '"Accessibility is the right thing to do. And it\'s good for business too!"'
+    ];
+    const randomQuote = quotes[Math.floor(Math.random() * quotes.length)];
+    output.push('');
+    output.push(useColor ? chalk.italic.gray(randomQuote) : randomQuote);
+    
+    return output.join('\n');
+  }
   
   // Violations
   if (results.violations && results.violations.length > 0) {
