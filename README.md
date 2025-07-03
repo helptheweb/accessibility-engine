@@ -1,6 +1,6 @@
 # @helptheweb/accessibility-engine
 
-A modular, extensible accessibility testing engine for WCAG compliance. Built as a modern alternative to axe-core with first-class support for Bun.js.
+A modular, extensible accessibility testing engine for WCAG compliance. Built as a modern engine with first-class support for Bun.js.
 
 ## Features
 
